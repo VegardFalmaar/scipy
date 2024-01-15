@@ -202,7 +202,7 @@ def shgo(
         * disp : bool (L)
             Set to True to print convergence messages. This setting applies
             mainly to compiled extensions of the optimization routines. The
-            native Python code is gradually rewritten to log messages using the
+            native Python code is mainly set up to log messages using the
             standard ``logging`` library to the logger named "scipy". To change
             the logging level from the default ``logging.WARNING`` you may
             anywhere in your code change the SciPy logger through
