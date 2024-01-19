@@ -200,7 +200,49 @@ def shgo(
         Feedback:
 
         * disp : bool (L)
-            Set to True to print convergence messages.
+            Set to True to print convergence messages. This setting applies
+            mainly to compiled subroutines used during optimization. The
+            native Python code is mainly set up to log messages using the
+            standard ``logging`` library to the logger named
+            "scipy.optimize.shgo". By default warnings and errors will be
+            printed to ``sys.stderr`` while information and debug log messages
+            are hidden.
+            To change the logging level from the default
+            ``logging.WARNING`` you may anywhere in your code change the
+            logger through e.g.
+
+            >>> import logging
+            ...
+            >>> logger = logging.getLogger('scipy.optimize.shgo')
+            ...
+            >>> # set the logging level to DEBUG
+            >>> logger.setLevel(logging.DEBUG)
+            ...
+            >>> # Add a handler which outputs log messages to the console.
+            >>> # In order to write log messages to file use
+            >>> # logging.FileHandler instead.
+            >>> ch = logging.StreamHandler()
+            ...
+            >>> # Use the standard format for logging output.
+            >>> # Alternatively specify other desired format.
+            >>> formatter = logging.Formatter(logging.BASIC_FORMAT)
+            ...
+            >>> ch.setFormatter(formatter)
+            >>> logger.addHandler(ch)
+
+            Note that the organization of the loggers is hierachical. The
+            "scipy.optimize.shgo" logger is the child of "scipy.optimize" which
+            is the child of "scipy". Changes made to one logger propagates down
+            the hierarchy, meaning that setting the logging level of "scipy"
+            will affect the logging level of "scipy.optimize.shgo" unless the
+            latter is also explicitly modified.
+            See e.g.
+            https://docs.python.org/3/howto/logging.html#configuring-logging
+            for further information on formats, writing to file, and the
+            available logging levels.
+
+            .. versionchanged:: 1.12.1
+                Using the 'scipy.optimize.shgo' logger instead of root.
 
     sampling_method : str or function, optional
         Current built in sampling method options are ``halton``, ``sobol`` and
@@ -454,8 +496,9 @@ def shgo(
         shc.iterate_all()
 
     if not shc.break_routine:
-        if shc.disp:
-            logging.info("Successfully completed construction of complex.")
+        logging.getLogger('scipy.optimize.shgo').info(
+            "Successfully completed construction of complex."
+        )
 
     # Test post iterations success
     if len(shc.LMC.xl_maps) == 0:
@@ -487,6 +530,9 @@ class SHGO:
                  iters=None, callback=None, minimizer_kwargs=None,
                  options=None, sampling_method='simplicial', workers=1):
         from scipy.stats import qmc
+
+        self.logger = logging.getLogger('scipy.optimize.shgo')
+
         # Input checks
         methods = ['halton', 'sobol', 'simplicial']
         if isinstance(sampling_method, str) and sampling_method not in methods:
@@ -652,12 +698,12 @@ class SHGO:
         self.stop_global = False  # Used in the stopping_criteria method
         self.break_routine = False  # Break the algorithm globally
         self.iters = iters  # Iterations to be ran
-        self.iters_done = 0  # Iterations completed
-        self.n = n  # Sampling points per iteration
-        self.nc = 0  # n  # Sampling points to sample in current iteration
+        self.iters_done: int = 0  # Iterations completed
+        self.n: int = n  # Sampling points per iteration
+        self.nc: int = 0  # n  # Sampling points to sample in current iteration
         self.n_prc = 0  # Processed points (used to track Delaunay iters)
-        self.n_sampled = 0  # To track no. of sampling points already generated
-        self.fn = 0  # Number of feasible sampling points evaluations performed
+        self.n_sampled: int = 0  # To track no. of sampling points already generated
+        self.fn: int = 0  # Number of feasible sampling points evaluations performed
         self.hgr = 0  # Homology group rank
         # Initially attempt to build the triangulation incrementally:
         self.qhull_incremental = True
@@ -780,7 +826,7 @@ class SHGO:
         # infeasible points
         self.maxev = options.get('maxev', None)
         # Maximum processing runtime allowed
-        self.init = time.time()
+        self.init: float = time.time()
         self.maxtime = options.get('maxtime', None)
         if 'f_min' in options:
             # Specify the minimum objective function value, if it is known.
@@ -823,8 +869,7 @@ class SHGO:
         processing time) has been met.
 
         """
-        if self.disp:
-            logging.info('Splitting first generation')
+        self.logger.info('Splitting first generation')
 
         while not self.stop_global:
             if self.break_routine:
@@ -848,8 +893,7 @@ class SHGO:
         Construct the minimizer pool, map the minimizers to local minima
         and sort the results into a global return object.
         """
-        if self.disp:
-            logging.info('Searching for minimizer pool...')
+        self.logger.info('Searching for minimizer pool...')
 
         self.minimizers()
 
@@ -867,8 +911,7 @@ class SHGO:
         else:
             self.find_lowest_vertex()
 
-        if self.disp:
-            logging.info(f"Minimiser pool = SHGO.X_min = {self.X_min}")
+        self.logger.info("Minimiser pool = SHGO.X_min = %s", self.X_min)
 
     def find_lowest_vertex(self):
         # Find the lowest objective function value on one of
@@ -876,8 +919,7 @@ class SHGO:
         self.f_lowest = np.inf
         for x in self.HC.V.cache:
             if self.HC.V[x].f < self.f_lowest:
-                if self.disp:
-                    logging.info(f'self.HC.V[x].f = {self.HC.V[x].f}')
+                self.logger.info('self.HC.V[x].f = %f', self.HC.V[x].f)
                 self.f_lowest = self.HC.V[x].f
                 self.x_lowest = self.HC.V[x].x_a
         for lmc in self.LMC.cache:
@@ -892,8 +934,7 @@ class SHGO:
     # Stopping criteria functions:
     def finite_iterations(self):
         mi = min(x for x in [self.iters, self.maxiter] if x is not None)
-        if self.disp:
-            logging.info(f'Iterations done = {self.iters_done} / {mi}')
+        self.logger.info('Iterations done = %d / %d', self.iters_done, mi)
         if self.iters is not None:
             if self.iters_done >= (self.iters):
                 self.stop_global = True
@@ -905,25 +946,25 @@ class SHGO:
 
     def finite_fev(self):
         # Finite function evals in the feasible domain
-        if self.disp:
-            logging.info(f'Function evaluations done = {self.fn} / {self.maxfev}')
+        self.logger.info(
+            'Function evaluations done = %d / %d', self.fn, self.maxfev
+        )
         if self.fn >= self.maxfev:
             self.stop_global = True
         return self.stop_global
 
     def finite_ev(self):
         # Finite evaluations including infeasible sampling points
-        if self.disp:
-            logging.info(f'Sampling evaluations done = {self.n_sampled} '
-                         f'/ {self.maxev}')
+        self.logger.info(
+            'Sampling evaluations done = %d / %d', self.n_sampled, self.maxev
+        )
         if self.n_sampled >= self.maxev:
             self.stop_global = True
 
-    def finite_time(self):
-        if self.disp:
-            logging.info(f'Time elapsed = {time.time() - self.init} '
-                         f'/ {self.maxtime}')
-        if (time.time() - self.init) >= self.maxtime:
+    def finite_time(self) -> None:
+        elapsed_time: float = time.time() - self.init
+        self.logger.info('Time elapsed = %f / %f', elapsed_time, self.maxtime)
+        if elapsed_time >= self.maxtime:
             self.stop_global = True
 
     def finite_precision(self):
@@ -935,9 +976,8 @@ class SHGO:
         """
         # If no minimizer has been found use the lowest sampling value
         self.find_lowest_vertex()
-        if self.disp:
-            logging.info(f'Lowest function evaluation = {self.f_lowest}')
-            logging.info(f'Specified minimum = {self.f_min_true}')
+        self.logger.info('Lowest function evaluation = %f', self.f_lowest)
+        self.logger.info('Specified minimum = %f', self.f_min_true)
         # If no feasible point was return from test
         if self.f_lowest is None:
             return self.stop_global
@@ -973,9 +1013,11 @@ class SHGO:
         self.hgr = self.LMC.size
         if self.hgrd <= self.minhgrd:
             self.stop_global = True
-        if self.disp:
-            logging.info(f'Current homology growth = {self.hgrd} '
-                         f' (minimum growth = {self.minhgrd})')
+        self.logger.info(
+            'Current homology growth = %d  (minimum growth = %d)',
+            self.hgrd,
+            self.minhgrd
+        )
         return self.stop_global
 
     def stopping_criteria(self):
@@ -1020,8 +1062,7 @@ class SHGO:
         Note: called with ``self.iterate_complex()`` after class initiation
         """
         # Iterate the complex
-        if self.disp:
-            logging.info('Constructing and refining simplicial complex graph '
+        self.logger.info('Constructing and refining simplicial complex graph '
                          'structure')
         if self.n is None:
             self.HC.refine_all()
@@ -1030,8 +1071,7 @@ class SHGO:
             self.HC.refine(self.n)
             self.n_sampled += self.n
 
-        if self.disp:
-            logging.info('Triangulation completed, evaluating all constraints '
+        self.logger.info('Triangulation completed, evaluating all constraints '
                          'and objective function values.')
 
         # Re-add minimisers to complex
@@ -1053,8 +1093,7 @@ class SHGO:
 
         # Evaluate all constraints and functions
         self.HC.V.process_pools()
-        if self.disp:
-            logging.info('Evaluations completed.')
+        self.logger.info('Evaluations completed.')
 
         # feasible sampling points counted by the triangulation.py routines
         self.fn = self.HC.V.nfev
@@ -1070,10 +1109,9 @@ class SHGO:
         self.sampled_surface(infty_cons_sampl=self.infty_cons_sampl)
 
         # Add sampled points to a triangulation, construct self.Tri
-        if self.disp:
-            logging.info(f'self.n = {self.n}')
-            logging.info(f'self.nc = {self.nc}')
-            logging.info('Constructing and refining simplicial complex graph '
+        self.logger.info('self.n = %d', self.n)
+        self.logger.info('self.nc = %d', self.nc)
+        self.logger.info('Constructing and refining simplicial complex graph '
                          'structure from sampling points.')
 
         if self.dim < 2:
@@ -1093,8 +1131,7 @@ class SHGO:
                 self.delaunay_triangulation(n_prc=self.n_prc)
             self.n_prc = self.C.shape[0]
 
-        if self.disp:
-            logging.info('Triangulation completed, evaluating all '
+        self.logger.info('Triangulation completed, evaluating all '
                          'constraints and objective function values.')
 
         if hasattr(self, 'Tri'):
@@ -1102,14 +1139,12 @@ class SHGO:
 
         # Process all pools
         # Evaluate all constraints and functions
-        if self.disp:
-            logging.info('Triangulation completed, evaluating all constraints '
+        self.logger.info('Triangulation completed, evaluating all constraints '
                          'and objective function values.')
 
         # Evaluate all constraints and functions
         self.HC.V.process_pools()
-        if self.disp:
-            logging.info('Evaluations completed.')
+        self.logger.info('Evaluations completed.')
 
         # feasible sampling points counted by the triangulation.py routines
         self.fn = self.HC.V.nfev
@@ -1133,22 +1168,20 @@ class SHGO:
                 continue
 
             if self.HC.V[x].minimiser():
-                if self.disp:
-                    logging.info('=' * 60)
-                    logging.info(f'v.x = {self.HC.V[x].x_a} is minimizer')
-                    logging.info(f'v.f = {self.HC.V[x].f} is minimizer')
-                    logging.info('=' * 30)
+                self.logger.info('=' * 60)
+                self.logger.info('v.x = %s is minimizer', self.HC.V[x].x_a)
+                self.logger.info('v.f = %s is minimizer', self.HC.V[x].f)
+                self.logger.info('=' * 30)
 
                 if self.HC.V[x] not in self.minimizer_pool:
                     self.minimizer_pool.append(self.HC.V[x])
 
-                if self.disp:
-                    logging.info('Neighbors:')
-                    logging.info('=' * 30)
-                    for vn in self.HC.V[x].nn:
-                        logging.info(f'x = {vn.x} || f = {vn.f}')
+                self.logger.info('Neighbors:')
+                self.logger.info('=' * 30)
+                for vn in self.HC.V[x].nn:
+                    self.logger.info('x = %s || f = %s', vn.x, vn.f)
 
-                    logging.info('=' * 60)
+                self.logger.info('=' * 60)
         self.minimizer_pool_F = []
         self.X_min = []
         # normalized tuple in the Vertex cache
@@ -1282,9 +1315,8 @@ class SHGO:
                 if (x_i > v_min.x_a[i]) and (x_i < cbounds[i][1]):
                     cbounds[i][1] = x_i
 
-        if self.disp:
-            logging.info(f'cbounds found for v_min.x_a = {v_min.x_a}')
-            logging.info(f'cbounds = {cbounds}')
+        self.logger.info('cbounds found for v_min.x_a = %s', v_min.x_a)
+        self.logger.info('cbounds = %s', cbounds)
 
         return cbounds
 
@@ -1325,19 +1357,16 @@ class SHGO:
             object.
         """
         # Use minima maps if vertex was already run
-        if self.disp:
-            logging.info(f'Vertex minimiser maps = {self.LMC.v_maps}')
+        self.logger.info('Vertex minimiser maps = %s', self.LMC.v_maps)
 
         if self.LMC[x_min].lres is not None:
-            logging.info(f'Found self.LMC[x_min].lres = '
-                         f'{self.LMC[x_min].lres}')
+            self.logger.info('Found self.LMC[x_min].lres = %s', self.LMC[x_min].lres)
             return self.LMC[x_min].lres
 
         if self.callback is not None:
-            logging.info(f'Callback for minimizer starting at {x_min}:')
+            self.logger.info('Callback for minimizer starting at %s:', x_min)
 
-        if self.disp:
-            logging.info(f'Starting minimization at {x_min}...')
+        self.logger.info('Starting minimization at %s...', x_min)
 
         if self.sampling_method == 'simplicial':
             x_min_t = tuple(x_min)
@@ -1347,23 +1376,22 @@ class SHGO:
             g_bounds = self.construct_lcb_simplicial(self.HC.V[x_min_t_norm])
             if 'bounds' in self.min_solver_args:
                 self.minimizer_kwargs['bounds'] = g_bounds
-                logging.info(self.minimizer_kwargs['bounds'])
+                self.logger.info(self.minimizer_kwargs['bounds'])
 
         else:
             g_bounds = self.construct_lcb_delaunay(x_min, ind=ind)
             if 'bounds' in self.min_solver_args:
                 self.minimizer_kwargs['bounds'] = g_bounds
-                logging.info(self.minimizer_kwargs['bounds'])
+                self.logger.info(self.minimizer_kwargs['bounds'])
 
-        if self.disp and 'bounds' in self.minimizer_kwargs:
-            logging.info('bounds in kwarg:')
-            logging.info(self.minimizer_kwargs['bounds'])
+        if 'bounds' in self.minimizer_kwargs:
+            self.logger.info('bounds in kwarg:')
+            self.logger.info(self.minimizer_kwargs['bounds'])
 
         # Local minimization using scipy.optimize.minimize:
         lres = minimize(self.func, x_min, **self.minimizer_kwargs)
 
-        if self.disp:
-            logging.info(f'lres = {lres}')
+        self.logger.info('lres = %s', lres)
 
         # Local function evals for all minimizers
         self.res.nlfev += lres.nfev
@@ -1424,8 +1452,7 @@ class SHGO:
         requires more objective function evaluations.
         """
         # Generate sampling points
-        if self.disp:
-            logging.info('Generating sampling points')
+        self.logger.info('Generating sampling points')
         self.sampling(self.nc, self.dim)
         if len(self.LMC.xl_maps) > 0:
             self.C = np.vstack((self.C, np.array(self.LMC.xl_maps)))
@@ -1477,8 +1504,7 @@ class SHGO:
                                     + 'feasible set. Increasing sampling '
                                     + 'size.')
                 # sampling correctly for both 1-D and >1-D cases
-                if self.disp:
-                    logging.info(self.res.message)
+                self.logger.info(self.res.message)
 
     def sorted_samples(self):  # Validated
         """Find indexes of the sorted sampling points"""
@@ -1498,7 +1524,7 @@ class SHGO:
                                             )
             except spatial.QhullError:
                 if str(sys.exc_info()[1])[:6] == 'QH6239':
-                    logging.warning('QH6239 Qhull precision error detected, '
+                    self.logger.warning('QH6239 Qhull precision error detected, '
                                     'this usually occurs when no bounds are '
                                     'specified, Qhull can only run with '
                                     'handling cocircular/cospherical points'
