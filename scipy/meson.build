@@ -43,7 +43,9 @@ thread_dep = dependency('threads', required: false)
 #   numpy-include-dir = /abspath/to/host-pythons/site-packages/numpy/core/include
 #
 # This uses the path as is, and avoids running the interpreter.
-incdir_numpy = meson.get_external_property('numpy-include-dir', 'not-given')
+# Vegard
+incdir_numpy = '/home/vegard/.virtualenvs/scipy-dev/lib/python3.10/site-packages/numpy/core/include'
+# incdir_numpy = meson.get_external_property('numpy-include-dir', 'not-given')
 if incdir_numpy == 'not-given'
   incdir_numpy = run_command(py3,
     [
@@ -91,7 +93,9 @@ pybind11_dep = dependency('pybind11', version: '>=2.10.4')
 if use_pythran
   # This external-property may not be needed if we can use the native include
   # dir, see https://github.com/serge-sans-paille/pythran/issues/1394
-  incdir_pythran = meson.get_external_property('pythran-include-dir', 'not-given')
+  # Vegard
+  incdir_pythran = '/home/vegard/.virtualenvs/scipy-dev/lib/python3.10/site-packages/pythran'
+  # incdir_pythran = meson.get_external_property('pythran-include-dir', 'not-given')
   if incdir_pythran == 'not-given'
     incdir_pythran = run_command(py3,
       [
