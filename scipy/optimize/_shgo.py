@@ -1018,6 +1018,8 @@ class SHGO:
         self.iters_done += 1
         logger.debug('=' * 30)
         logger.debug('Iteration # %d done', self.iters_done)
+        logger.debug('f-min: %f', self.res.fun)
+        logger.debug('Best x: %s', self.res.x)
 
     def iterate_hypercube(self) -> None:
         """
