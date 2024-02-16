@@ -1018,8 +1018,12 @@ class SHGO:
         self.iters_done += 1
         logger.debug('=' * 30)
         logger.debug('Iteration # %d done', self.iters_done)
-        logger.debug('f-min: %f', self.res.fun)
-        logger.debug('Best x: %s', self.res.x)
+        try:
+            logger.debug('f-min: %f', self.res.fun)
+            logger.debug('Best x: %s', self.res.x)
+        except AttributeError:
+            logger.debug('f-min: None')
+            logger.debug('Best x: None')
 
     def iterate_hypercube(self) -> None:
         """
